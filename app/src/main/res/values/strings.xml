@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NetBridge</string>
+
+    <string name="status_disconnected">Отключено</string>
+    <string name="status_connecting">Подключение…</string>
+    <string name="status_connected">Подключено</string>
+    <string name="status_disconnecting">Отключение…</string>
+
+    <string name="action_connect">Подключить</string>
+    <string name="action_disconnect">Отключить</string>
+
+    <string name="label_server">Сервер</string>
+    <string name="label_no_servers">Список серверов пуст. Обновите подписку.</string>
+    <string name="action_refresh_servers">Обновить список серверов</string>
+
+    <string name="subscription_hint">Ссылка на подписку (subscription URL)</string>
+    <string name="action_save_subscription">Сохранить</string>
+    <string name="subscription_dialog_title">Укажите ссылку на подписку</string>
+
+    <string name="device_id_label">ID устройства: %1$s</string>
+
+    <string name="error_no_subscription">Сначала укажите ссылку на подписку</string>
+    <string name="error_no_server_selected">Выберите сервер</string>
+    <string name="error_subscription_fetch_failed">Не удалось загрузить подписку: %1$s</string>
+    <string name="error_engine_missing">Движок туннеля не собран (см. README: Building the tunnel engine)</string>
+
+    <string name="vpn_notification_channel">Статус подключения</string>
+</resources>

@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+app/build/
+app/release/
+
+# The Xray engine AAR is built locally per README instructions, not committed —
+# it's a multi-hundred-MB Go/NDK build artifact and license terms should be
+# reviewed by whoever ships it.
+app/libs/*.aar
