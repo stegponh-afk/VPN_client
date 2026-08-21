@@ -32,4 +32,5 @@
     <string name="expiry_format">Истекает: %1$s</string>
     <string name="announce_expand">···</string>
     <string name="announce_collapse">▲</string>
+    <string name="support_link">Поддержка ↗</string>
 </resources>

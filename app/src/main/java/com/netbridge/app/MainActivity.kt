@@ -89,6 +89,10 @@ class MainActivity : AppCompatActivity() {
         binding.serverList.layoutManager = LinearLayoutManager(this)
         binding.serverList.adapter = adapter
         binding.serverList.addItemDecoration(ServerDividerDecoration(this))
+        // Default ItemAnimator's "changed" transition fights our own swipe-back
+        // animation on the same view (ping refresh calls notifyItemChanged right as
+        // the card is animating back to rest) — the card visibly snapped twice.
+        binding.serverList.itemAnimator = null
         ItemTouchHelper(
             ServerSwipeCallback(
                 context = this,
@@ -233,7 +237,12 @@ class MainActivity : AppCompatActivity() {
             binding.announceToggle.visibility = View.GONE
         }
 
-        binding.supportLinkText.visibility = if (info?.supportUrl.isNullOrBlank()) View.GONE else View.VISIBLE
+        if (info?.supportUrl.isNullOrBlank()) {
+            binding.supportLinkText.visibility = View.GONE
+        } else {
+            binding.supportLinkText.visibility = View.VISIBLE
+            binding.supportLinkText.text = getString(R.string.support_link)
+        }
     }
 
     /** Runs once, right after the text is set and collapsed to 2 lines, to decide whether a toggle is needed at all. */
