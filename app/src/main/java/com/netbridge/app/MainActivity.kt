@@ -95,7 +95,6 @@ class MainActivity : AppCompatActivity() {
                 getServer = adapter::getServer,
                 onSwipeLeft = { server -> adapter.refreshPing(server.key) },
                 onSwipeRight = { server -> connectToServer(server) },
-                onSettled = adapter::resetSwipedItem,
             )
         ).attachToRecyclerView(binding.serverList)
 

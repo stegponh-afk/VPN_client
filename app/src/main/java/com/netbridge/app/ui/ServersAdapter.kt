@@ -48,11 +48,6 @@ class ServersAdapter(
         if (index != -1) notifyItemChanged(index)
     }
 
-    /** Snaps a swiped-but-not-removed item back into place. */
-    fun resetSwipedItem(position: Int) {
-        if (position != RecyclerView.NO_POSITION) notifyItemChanged(position)
-    }
-
     private fun bindPing(holder: ServerViewHolder, server: VlessConfig) {
         val cached = pingCache[server.key]
         if (cached != null || pingCache.containsKey(server.key)) {
