@@ -26,4 +26,7 @@
     <string name="error_engine_missing">Движок туннеля не собран (см. README: Building the tunnel engine)</string>
 
     <string name="vpn_notification_channel">Статус подключения</string>
+
+    <string name="traffic_usage_format">%1$s GB / %2$s GB</string>
+    <string name="expiry_format">Истекает: %1$s</string>
 </resources>

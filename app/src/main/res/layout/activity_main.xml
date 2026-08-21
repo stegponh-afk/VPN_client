@@ -122,51 +122,152 @@
         tools:text="00:04:12"
         tools:visibility="visible" />
 
-    <TextView
-        android:id="@+id/serverListLabel"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="@string/label_server"
-        android:textColor="@color/text_secondary"
-        android:textSize="13sp"
-        app:layout_constraintTop_toBottomOf="@id/sessionTimerText"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/refreshServersButton" />
-
-    <ImageButton
-        android:id="@+id/refreshServersButton"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:background="@android:color/transparent"
-        android:contentDescription="@string/action_refresh_servers"
-        android:src="@drawable/ic_refresh"
-        app:tint="@color/text_secondary"
-        app:layout_constraintTop_toTopOf="@id/serverListLabel"
-        app:layout_constraintBottom_toBottomOf="@id/serverListLabel"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/serverList"
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/contentScroll"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="20dp"
         android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@id/serverListLabel"
+        android:fillViewport="true"
+        app:layout_constraintTop_toBottomOf="@id/sessionTimerText"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <TextView
-        android:id="@+id/emptyServersText"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="@string/label_no_servers"
-        android:textColor="@color/text_secondary"
-        android:textAlignment="center"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="@id/serverList"
-        app:layout_constraintStart_toStartOf="@id/serverList"
-        app:layout_constraintEnd_toEndOf="@id/serverList" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_server_item"
+            android:paddingBottom="4dp">
+
+            <LinearLayout
+                android:id="@+id/subCardHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground"
+                android:padding="14dp">
+
+                <ImageView
+                    android:id="@+id/subCardChevron"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/ic_chevron_down"
+                    app:tint="@color/text_secondary" />
+
+                <TextView
+                    android:id="@+id/subCardTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="10dp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/label_server"
+                    tools:text="VpopVless" />
+
+                <ImageButton
+                    android:id="@+id/refreshServersButton"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/action_refresh_servers"
+                    android:src="@drawable/ic_refresh"
+                    app:tint="@color/text_secondary" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/subCardExpandable"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/subMetaGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="14dp"
+                    android:paddingBottom="12dp">
+
+                    <ProgressBar
+                        android:id="@+id/trafficBar"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="6dp"
+                        android:layout_marginTop="4dp"
+                        android:max="100"
+                        android:progressTint="@color/primary"
+                        android:progressBackgroundTint="@color/surface" />
+
+                    <TextView
+                        android:id="@+id/trafficText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        tools:text="9,0 GB / 10,0 GB" />
+
+                    <TextView
+                        android:id="@+id/expiryText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        tools:text="Истекает: 21.12.2026" />
+
+                    <TextView
+                        android:id="@+id/announceText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:lineSpacingExtra="4dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp"
+                        tools:text="Подписка оформлена через бота @Vpopvles_bot" />
+
+                    <TextView
+                        android:id="@+id/supportLinkText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:textColor="@color/primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:visibility="gone"
+                        tools:text="Поддержка ↗" />
+
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/serverList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="10dp"
+                    android:clipToPadding="false"
+                    android:nestedScrollingEnabled="false" />
+
+                <TextView
+                    android:id="@+id/emptyServersText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="14dp"
+                    android:text="@string/label_no_servers"
+                    android:textColor="@color/text_secondary"
+                    android:textAlignment="center"
+                    android:visibility="gone" />
+
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

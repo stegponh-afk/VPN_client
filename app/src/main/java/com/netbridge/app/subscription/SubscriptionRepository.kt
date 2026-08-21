@@ -1,16 +1,21 @@
 package com.netbridge.app.subscription
 
-import com.netbridge.app.model.VlessConfig
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLConnection
 import java.net.UnknownHostException
 import javax.net.ssl.HttpsURLConnection
 
 /**
- * Fetches the subscription content over HTTPS and hands it to [SubscriptionParser].
+ * Fetches the subscription content over HTTPS and hands it to [SubscriptionParser],
+ * plus reads the subscription metadata a panel sends alongside it as response
+ * headers (`profile-title`, `announce`, `subscription-userinfo`, etc. — the
+ * de-facto standard used by Xray/sing-box/Clash-compatible subscription APIs,
+ * confirmed against a live Remnawave panel).
  *
  * The device id is sent as the `X-HWID` header (confirmed against a live
  * Remnawave panel via a real client's captured traffic — see [appendDeviceId]),
@@ -30,9 +35,9 @@ import javax.net.ssl.HttpsURLConnection
  */
 class SubscriptionRepository {
 
-    suspend fun fetchServers(subscriptionUrl: String, deviceId: String): Result<List<VlessConfig>> =
+    suspend fun fetchServers(subscriptionUrl: String, deviceId: String): Result<SubscriptionFetchResult> =
         withContext(Dispatchers.IO) {
-            var lastResult: Result<List<VlessConfig>> = Result.failure(IllegalStateException("no attempt made"))
+            var lastResult: Result<SubscriptionFetchResult> = Result.failure(IllegalStateException("no attempt made"))
 
             repeat(MAX_ATTEMPTS) { attempt ->
                 lastResult = runCatching { fetchOnce(subscriptionUrl, deviceId) }
@@ -53,7 +58,7 @@ class SubscriptionRepository {
             lastResult
         }
 
-    private fun fetchOnce(subscriptionUrl: String, deviceId: String): List<VlessConfig> {
+    private fun fetchOnce(subscriptionUrl: String, deviceId: String): SubscriptionFetchResult {
         val urlWithDevice = appendDeviceId(subscriptionUrl, deviceId)
         val connection = URL(urlWithDevice).openConnection() as HttpURLConnection
         connection.connectTimeout = 12_000
@@ -66,14 +71,14 @@ class SubscriptionRepository {
             val code = connection.responseCode
             check(code in 200..299) { "HTTP $code" }
             val body = connection.inputStream.bufferedReader().use { it.readText() }
-            SubscriptionParser.parse(body)
+            SubscriptionFetchResult(SubscriptionParser.parse(body), parseSubscriptionInfo(connection))
         } finally {
             connection.disconnect()
         }
     }
 
     /** Resolves [subscriptionUrl]'s host via DoH and connects to that IP directly, SNI/verified against the real hostname. */
-    private fun fetchViaDoh(subscriptionUrl: String, deviceId: String): List<VlessConfig> {
+    private fun fetchViaDoh(subscriptionUrl: String, deviceId: String): SubscriptionFetchResult {
         val url = URL(appendDeviceId(subscriptionUrl, deviceId))
         val realHost = url.host
         val ip = DohResolver.resolve(realHost) ?: throw UnknownHostException("DoH could not resolve $realHost either")
@@ -94,10 +99,48 @@ class SubscriptionRepository {
             val code = connection.responseCode
             check(code in 200..299) { "HTTP $code (via DoH-resolved $ip)" }
             val body = connection.inputStream.bufferedReader().use { it.readText() }
-            SubscriptionParser.parse(body)
+            SubscriptionFetchResult(SubscriptionParser.parse(body), parseSubscriptionInfo(connection))
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun parseSubscriptionInfo(connection: URLConnection): SubscriptionInfo? {
+        val title = decodeHeader(connection.getHeaderField("profile-title"))
+        val announce = decodeHeader(connection.getHeaderField("announce"))
+        val supportUrl = connection.getHeaderField("support-url")
+        val updateInterval = connection.getHeaderField("profile-update-interval")?.toIntOrNull()
+        val userinfo = parseUserinfo(connection.getHeaderField("subscription-userinfo"))
+
+        if (title == null && announce == null && userinfo == null) return null
+        return SubscriptionInfo(
+            title = title,
+            announce = announce,
+            supportUrl = supportUrl,
+            uploadBytes = userinfo?.get("upload"),
+            downloadBytes = userinfo?.get("download"),
+            totalBytes = userinfo?.get("total"),
+            expireEpochSeconds = userinfo?.get("expire"),
+            updateIntervalHours = updateInterval,
+        )
+    }
+
+    /** Handles the `base64:<payload>` convention these headers use, falling back to the raw value. */
+    private fun decodeHeader(value: String?): String? {
+        if (value.isNullOrBlank()) return null
+        val payload = value.removePrefix("base64:")
+        return runCatching { String(Base64.decode(payload, Base64.DEFAULT), Charsets.UTF_8) }.getOrNull() ?: value
+    }
+
+    private fun parseUserinfo(value: String?): Map<String, Long>? {
+        if (value.isNullOrBlank()) return null
+        return value.split(";")
+            .mapNotNull { part ->
+                val (key, v) = part.trim().split("=", limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
+                key to (v.toLongOrNull() ?: return@mapNotNull null)
+            }
+            .toMap()
+            .takeIf { it.isNotEmpty() }
     }
 
     /**

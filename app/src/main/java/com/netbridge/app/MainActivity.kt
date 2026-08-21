@@ -2,8 +2,10 @@ package com.netbridge.app
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -13,11 +15,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.transition.AutoTransition
+import androidx.transition.TransitionManager
 import com.netbridge.app.databinding.ActivityMainBinding
 import com.netbridge.app.databinding.DialogSubscriptionBinding
 import com.netbridge.app.device.DeviceIdentity
 import com.netbridge.app.model.VlessConfig
 import com.netbridge.app.store.AppPreferences
+import com.netbridge.app.subscription.SubscriptionInfo
 import com.netbridge.app.subscription.SubscriptionParser
 import com.netbridge.app.subscription.SubscriptionRepository
 import com.netbridge.app.ui.ButtonStateAnimator
@@ -29,6 +34,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
@@ -42,6 +49,8 @@ class MainActivity : AppCompatActivity() {
     private val adapter by lazy { ServersAdapter(scope = lifecycleScope, onSelect = ::onServerSelected) }
 
     private var servers: List<VlessConfig> = emptyList()
+    private var subscriptionInfo: SubscriptionInfo? = null
+    private var isCardExpanded = true
     private var pendingConnectConfig: VlessConfig? = null
     private var sessionTimerJob: Job? = null
     private var sessionStartMillis: Long = 0L
@@ -78,8 +87,14 @@ class MainActivity : AppCompatActivity() {
         binding.subscriptionButton.setOnClickListener { showSubscriptionDialog() }
         binding.refreshServersButton.setOnClickListener { refreshServers() }
         binding.connectButton.setOnClickListener { onConnectClicked() }
+        binding.subCardHeader.setOnClickListener { toggleCardExpanded() }
+        binding.supportLinkText.setOnClickListener { openSupportLink() }
+
+        isCardExpanded = prefs.subscriptionCardExpanded
+        applyCardExpanded(animate = false)
 
         loadCachedServers()
+        loadCachedSubscriptionInfo()
         observeStatus()
 
         if (prefs.subscriptionUrl.isNullOrBlank()) {
@@ -101,8 +116,13 @@ class MainActivity : AppCompatActivity() {
         renderServers()
     }
 
+    private fun loadCachedSubscriptionInfo() {
+        subscriptionInfo = prefs.subscriptionInfo
+        renderSubscriptionCard()
+    }
+
     private fun renderServers() {
-        binding.emptyServersText.visibility = if (servers.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+        binding.emptyServersText.visibility = if (servers.isEmpty()) View.VISIBLE else View.GONE
         adapter.submit(servers, prefs.selectedServerKey)
     }
 
@@ -138,9 +158,12 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val result = repository.fetchServers(url, deviceId)
             result.onSuccess { fetched ->
-                servers = fetched
-                prefs.cachedServersRaw = fetched.joinToString("\n") { it.rawUri }
+                servers = fetched.servers
+                prefs.cachedServersRaw = fetched.servers.joinToString("\n") { it.rawUri }
+                subscriptionInfo = fetched.info
+                prefs.subscriptionInfo = fetched.info
                 renderServers()
+                renderSubscriptionCard()
             }.onFailure { error ->
                 Toast.makeText(
                     this@MainActivity,
@@ -149,6 +172,69 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
         }
+    }
+
+    private fun renderSubscriptionCard() {
+        val info = subscriptionInfo
+        binding.subCardTitle.text = info?.title?.takeIf { it.isNotBlank() } ?: getString(R.string.label_server)
+
+        val total = info?.totalBytes
+        val used = info?.downloadBytes?.let { d -> (info.uploadBytes ?: 0) + d }
+        if (total != null && total > 0 && used != null) {
+            binding.trafficBar.visibility = View.VISIBLE
+            binding.trafficBar.progress = ((used.toDouble() / total.toDouble()) * 100).toInt().coerceIn(0, 100)
+            binding.trafficText.visibility = View.VISIBLE
+            binding.trafficText.text = getString(
+                R.string.traffic_usage_format,
+                formatGb(used),
+                formatGb(total)
+            )
+        } else {
+            binding.trafficBar.visibility = View.GONE
+            binding.trafficText.visibility = View.GONE
+        }
+
+        val expire = info?.expireEpochSeconds
+        if (expire != null && expire > 0) {
+            binding.expiryText.visibility = View.VISIBLE
+            binding.expiryText.text = getString(R.string.expiry_format, formatDate(expire))
+        } else {
+            binding.expiryText.visibility = View.GONE
+        }
+
+        val announce = info?.announce?.trim()
+        if (!announce.isNullOrBlank()) {
+            binding.announceText.visibility = View.VISIBLE
+            binding.announceText.text = announce
+        } else {
+            binding.announceText.visibility = View.GONE
+        }
+
+        binding.supportLinkText.visibility = if (info?.supportUrl.isNullOrBlank()) View.GONE else View.VISIBLE
+    }
+
+    private fun formatGb(bytes: Long): String = String.format(Locale("ru"), "%.1f", bytes / 1_000_000_000.0)
+
+    private fun formatDate(epochSeconds: Long): String =
+        SimpleDateFormat("dd.MM.yyyy", Locale("ru")).format(Date(epochSeconds * 1000))
+
+    private fun openSupportLink() {
+        val url = subscriptionInfo?.supportUrl ?: return
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    private fun toggleCardExpanded() {
+        isCardExpanded = !isCardExpanded
+        prefs.subscriptionCardExpanded = isCardExpanded
+        applyCardExpanded(animate = true)
+    }
+
+    private fun applyCardExpanded(animate: Boolean) {
+        if (animate) {
+            TransitionManager.beginDelayedTransition(binding.root, AutoTransition().apply { duration = 220 })
+        }
+        binding.subCardExpandable.visibility = if (isCardExpanded) View.VISIBLE else View.GONE
+        binding.subCardChevron.animate().rotation(if (isCardExpanded) 180f else 0f).setDuration(220).start()
     }
 
     private fun onConnectClicked() {
@@ -204,7 +290,7 @@ class MainActivity : AppCompatActivity() {
         if (state == TunnelState.CONNECTED) {
             if (sessionTimerJob != null) return
             sessionStartMillis = System.currentTimeMillis()
-            binding.sessionTimerText.visibility = android.view.View.VISIBLE
+            binding.sessionTimerText.visibility = View.VISIBLE
             sessionTimerJob = lifecycleScope.launch {
                 while (isActive) {
                     val elapsedSec = (System.currentTimeMillis() - sessionStartMillis) / 1000
@@ -215,7 +301,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             sessionTimerJob?.cancel()
             sessionTimerJob = null
-            binding.sessionTimerText.visibility = android.view.View.GONE
+            binding.sessionTimerText.visibility = View.GONE
         }
     }
 
