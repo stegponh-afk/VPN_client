@@ -39,6 +39,20 @@ class ServersAdapter(
 
     override fun getItemCount(): Int = servers.size
 
+    fun getServer(position: Int): VlessConfig? = servers.getOrNull(position)
+
+    /** Drops the cached ping for [serverKey] and re-binds it, which makes [bindPing] re-measure. */
+    fun refreshPing(serverKey: String) {
+        pingCache.remove(serverKey)
+        val index = servers.indexOfFirst { it.key == serverKey }
+        if (index != -1) notifyItemChanged(index)
+    }
+
+    /** Snaps a swiped-but-not-removed item back into place. */
+    fun resetSwipedItem(position: Int) {
+        if (position != RecyclerView.NO_POSITION) notifyItemChanged(position)
+    }
+
     private fun bindPing(holder: ServerViewHolder, server: VlessConfig) {
         val cached = pingCache[server.key]
         if (cached != null || pingCache.containsKey(server.key)) {

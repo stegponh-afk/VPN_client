@@ -14,6 +14,7 @@ import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.transition.AutoTransition
 import androidx.transition.TransitionManager
@@ -27,6 +28,7 @@ import com.netbridge.app.subscription.SubscriptionParser
 import com.netbridge.app.subscription.SubscriptionRepository
 import com.netbridge.app.ui.ButtonStateAnimator
 import com.netbridge.app.ui.ServerDividerDecoration
+import com.netbridge.app.ui.ServerSwipeCallback
 import com.netbridge.app.ui.ServersAdapter
 import com.netbridge.app.vpn.TunnelController
 import com.netbridge.app.vpn.TunnelState
@@ -87,6 +89,15 @@ class MainActivity : AppCompatActivity() {
         binding.serverList.layoutManager = LinearLayoutManager(this)
         binding.serverList.adapter = adapter
         binding.serverList.addItemDecoration(ServerDividerDecoration(this))
+        ItemTouchHelper(
+            ServerSwipeCallback(
+                context = this,
+                getServer = adapter::getServer,
+                onSwipeLeft = { server -> adapter.refreshPing(server.key) },
+                onSwipeRight = { server -> connectToServer(server) },
+                onSettled = adapter::resetSwipedItem,
+            )
+        ).attachToRecyclerView(binding.serverList)
 
         binding.subscriptionButton.setOnClickListener { showSubscriptionDialog() }
         binding.refreshServersButton.setOnClickListener { refreshServers() }
@@ -140,18 +151,21 @@ class MainActivity : AppCompatActivity() {
         val dialogBinding = DialogSubscriptionBinding.inflate(layoutInflater)
         dialogBinding.subscriptionInput.setText(prefs.subscriptionUrl.orEmpty())
 
-        AlertDialog.Builder(this)
-            .setTitle(R.string.subscription_dialog_title)
+        val dialog = AlertDialog.Builder(this)
             .setView(dialogBinding.root)
-            .setPositiveButton(R.string.action_save_subscription) { _, _ ->
-                val url = dialogBinding.subscriptionInput.text?.toString()?.trim().orEmpty()
-                if (url.isNotBlank()) {
-                    prefs.subscriptionUrl = url
-                    refreshServers()
-                }
+            .create()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        dialogBinding.dialogCancelButton.setOnClickListener { dialog.dismiss() }
+        dialogBinding.dialogSaveButton.setOnClickListener {
+            val url = dialogBinding.subscriptionInput.text?.toString()?.trim().orEmpty()
+            if (url.isNotBlank()) {
+                prefs.subscriptionUrl = url
+                refreshServers()
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     private fun refreshServers() {
@@ -300,6 +314,13 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.error_no_server_selected, Toast.LENGTH_SHORT).show()
             return
         }
+        connectToServer(config)
+    }
+
+    /** Selects [config] and connects to it — shared by the connect button and swipe-right-to-connect. */
+    private fun connectToServer(config: VlessConfig) {
+        prefs.selectedServerKey = config.key
+        adapter.submit(servers, config.key)
 
         val consentIntent = controller.prepareConsentIntent()
         if (consentIntent != null) {

@@ -16,7 +16,8 @@
 
     <string name="subscription_hint">Ссылка на подписку (subscription URL)</string>
     <string name="action_save_subscription">Сохранить</string>
-    <string name="subscription_dialog_title">Укажите ссылку на подписку</string>
+    <string name="subscription_dialog_title">Ссылка на подписку</string>
+    <string name="subscription_dialog_subtitle">Вставьте ссылку, которую прислал ваш провайдер</string>
 
     <string name="device_id_label">ID устройства: %1$s</string>
 
