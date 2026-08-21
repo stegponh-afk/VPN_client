@@ -12,10 +12,11 @@ import javax.net.ssl.HttpsURLConnection
 /**
  * Fetches the subscription content over HTTPS and hands it to [SubscriptionParser].
  *
- * The device id is sent both as a header and as a query parameter so it reaches
- * the subscription panel regardless of whether it logs headers or query strings —
- * that's the hook a self-hosted panel (3x-ui, Marzban, custom) uses to count how
- * many distinct devices are pulling one subscription key.
+ * The device id is sent as the `X-HWID` header (confirmed against a live
+ * Remnawave panel via a real client's captured traffic — see [appendDeviceId]),
+ * plus query params kept alongside for panels that use those instead — that's
+ * the hook a self-hosted panel uses to count how many distinct devices are
+ * pulling one subscription key.
  *
  * Real-world testing against a live panel showed the fetch failing intermittently
  * in two distinct ways depending on network path: `UnknownHostException` (operator
@@ -57,7 +58,7 @@ class SubscriptionRepository {
         val connection = URL(urlWithDevice).openConnection() as HttpURLConnection
         connection.connectTimeout = 12_000
         connection.readTimeout = 12_000
-        connection.setRequestProperty("hwid", deviceId)
+        connection.setRequestProperty("X-HWID", deviceId)
         connection.setRequestProperty("X-Device-Id", deviceId)
         connection.setRequestProperty("User-Agent", "NetBridge/1.0 (device:$deviceId)")
 
@@ -85,7 +86,7 @@ class SubscriptionRepository {
         connection.sslSocketFactory = SniPinnedSocketFactory(realHost)
         connection.hostnameVerifier = PinnedHostnameVerifier(realHost)
         connection.setRequestProperty("Host", realHost)
-        connection.setRequestProperty("hwid", deviceId)
+        connection.setRequestProperty("X-HWID", deviceId)
         connection.setRequestProperty("X-Device-Id", deviceId)
         connection.setRequestProperty("User-Agent", "NetBridge/1.0 (device:$deviceId)")
 
@@ -100,10 +101,12 @@ class SubscriptionRepository {
     }
 
     /**
-     * Query param name matters: the live panel this was tested against silently
-     * substitutes a placeholder server unless it recognizes the hwid — `hwid` is
-     * what Happ/v2RayTun/V2Box/InCY all send. `device_id` is kept alongside for
-     * panels that use that name instead; harmless extra param otherwise.
+     * The panel this was tested against (Remnawave) only checks the `X-HWID`
+     * header — confirmed by capturing Happ's actual request via PCAPdroid TLS
+     * decryption. Query params and User-Agent turned out not to matter at all;
+     * plenty of guessing (recognized-client User-Agent strings, `hwid`/`device_id`
+     * query params) failed until the header name was known for certain. Query
+     * params are kept as harmless extras for panels that read those instead.
      */
     private fun appendDeviceId(url: String, deviceId: String): String {
         val separator = if (url.contains("?")) "&" else "?"

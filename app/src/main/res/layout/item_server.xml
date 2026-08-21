@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:background="?attr/selectableItemBackground"
-    android:paddingHorizontal="4dp"
+    android:background="@drawable/bg_server_item"
+    android:paddingHorizontal="14dp"
     android:paddingVertical="12dp">
 
     <RadioButton
@@ -14,24 +16,47 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:clickable="false"
-        android:focusable="false" />
+        android:focusable="false"
+        app:buttonTint="@color/primary" />
 
-    <TextView
-        android:id="@+id/serverName"
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="8dp"
-        android:textColor="@color/text_primary"
-        android:textSize="15sp"
-        tools:text="Server-DE-01" />
+        android:layout_marginStart="10dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/serverName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            tools:text="🇺🇸 USA - Fast" />
+
+        <TextView
+            android:id="@+id/serverAddress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            tools:text="185.161.70.81:443" />
+
+    </LinearLayout>
 
     <TextView
-        android:id="@+id/serverAddress"
+        android:id="@+id/pingBadge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="@color/text_secondary"
+        android:background="@drawable/bg_ping_badge"
+        android:paddingHorizontal="9dp"
+        android:paddingVertical="4dp"
         android:textSize="12sp"
-        tools:text="1.2.3.4:443" />
+        android:textStyle="bold"
+        android:fontFamily="monospace"
+        android:textColor="@color/status_connected"
+        tools:text="42 ms" />
 
 </LinearLayout>

@@ -20,11 +20,16 @@ import com.netbridge.app.model.VlessConfig
 import com.netbridge.app.store.AppPreferences
 import com.netbridge.app.subscription.SubscriptionParser
 import com.netbridge.app.subscription.SubscriptionRepository
+import com.netbridge.app.ui.ButtonStateAnimator
 import com.netbridge.app.ui.ServersAdapter
 import com.netbridge.app.vpn.TunnelController
 import com.netbridge.app.vpn.TunnelState
 import com.netbridge.app.vpn.TunnelStatus
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,11 +37,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: AppPreferences
     private lateinit var deviceId: String
     private lateinit var controller: TunnelController
+    private lateinit var buttonAnimator: ButtonStateAnimator
     private val repository = SubscriptionRepository()
-    private val adapter = ServersAdapter(onSelect = ::onServerSelected)
+    private val adapter by lazy { ServersAdapter(scope = lifecycleScope, onSelect = ::onServerSelected) }
 
     private var servers: List<VlessConfig> = emptyList()
     private var pendingConnectConfig: VlessConfig? = null
+    private var sessionTimerJob: Job? = null
+    private var sessionStartMillis: Long = 0L
 
     private val vpnConsentLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -61,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         prefs = AppPreferences(this)
         deviceId = DeviceIdentity.getOrCreate(this)
         controller = TunnelController(this)
+        buttonAnimator = ButtonStateAnimator(binding.connectButton, binding.spinnerRing, binding.pulseRing)
 
         binding.deviceIdText.text = getString(R.string.device_id_label, deviceId.take(12))
         binding.serverList.layoutManager = LinearLayoutManager(this)
@@ -187,5 +196,33 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.setText(textRes)
         binding.statusText.setTextColor(ActivityCompat.getColor(this, colorRes))
         binding.connectButton.isEnabled = state != TunnelState.CONNECTING
+        buttonAnimator.setState(state)
+        updateSessionTimer(state)
+    }
+
+    private fun updateSessionTimer(state: TunnelState) {
+        if (state == TunnelState.CONNECTED) {
+            if (sessionTimerJob != null) return
+            sessionStartMillis = System.currentTimeMillis()
+            binding.sessionTimerText.visibility = android.view.View.VISIBLE
+            sessionTimerJob = lifecycleScope.launch {
+                while (isActive) {
+                    val elapsedSec = (System.currentTimeMillis() - sessionStartMillis) / 1000
+                    binding.sessionTimerText.text = formatElapsed(elapsedSec)
+                    delay(1000)
+                }
+            }
+        } else {
+            sessionTimerJob?.cancel()
+            sessionTimerJob = null
+            binding.sessionTimerText.visibility = android.view.View.GONE
+        }
+    }
+
+    private fun formatElapsed(totalSeconds: Long): String {
+        val h = totalSeconds / 3600
+        val m = (totalSeconds % 3600) / 60
+        val s = totalSeconds % 60
+        return String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
     }
 }
