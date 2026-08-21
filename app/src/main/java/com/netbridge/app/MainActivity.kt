@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var servers: List<VlessConfig> = emptyList()
     private var subscriptionInfo: SubscriptionInfo? = null
     private var isCardExpanded = true
+    private var isAnnounceExpanded = false
     private var pendingConnectConfig: VlessConfig? = null
     private var sessionTimerJob: Job? = null
     private var sessionStartMillis: Long = 0L
@@ -89,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         binding.connectButton.setOnClickListener { onConnectClicked() }
         binding.subCardHeader.setOnClickListener { toggleCardExpanded() }
         binding.supportLinkText.setOnClickListener { openSupportLink() }
+        binding.announceToggle.setOnClickListener { toggleAnnounceExpanded() }
 
         isCardExpanded = prefs.subscriptionCardExpanded
         applyCardExpanded(animate = false)
@@ -206,11 +208,43 @@ class MainActivity : AppCompatActivity() {
         if (!announce.isNullOrBlank()) {
             binding.announceText.visibility = View.VISIBLE
             binding.announceText.text = announce
+            isAnnounceExpanded = false
+            applyAnnounceExpanded(animate = false)
+            binding.announceText.post { updateAnnounceToggleVisibility() }
         } else {
             binding.announceText.visibility = View.GONE
+            binding.announceToggle.visibility = View.GONE
         }
 
         binding.supportLinkText.visibility = if (info?.supportUrl.isNullOrBlank()) View.GONE else View.VISIBLE
+    }
+
+    /** Only show the "···" toggle when the text is actually being cut off at 2 lines. */
+    private fun updateAnnounceToggleVisibility() {
+        val layout = binding.announceText.layout ?: return
+        val isTruncated = !isAnnounceExpanded &&
+            layout.lineCount > 0 &&
+            layout.getEllipsisCount(layout.lineCount - 1) > 0
+        binding.announceToggle.visibility = if (isTruncated) View.VISIBLE else View.GONE
+    }
+
+    private fun toggleAnnounceExpanded() {
+        isAnnounceExpanded = true
+        applyAnnounceExpanded(animate = true)
+        binding.announceToggle.visibility = View.GONE
+    }
+
+    private fun applyAnnounceExpanded(animate: Boolean) {
+        if (animate) {
+            TransitionManager.beginDelayedTransition(binding.root, AutoTransition().apply { duration = 200 })
+        }
+        if (isAnnounceExpanded) {
+            binding.announceText.maxLines = Integer.MAX_VALUE
+            binding.announceText.ellipsize = null
+        } else {
+            binding.announceText.maxLines = 2
+            binding.announceText.ellipsize = android.text.TextUtils.TruncateAt.END
+        }
     }
 
     private fun formatGb(bytes: Long): String = String.format(Locale("ru"), "%.1f", bytes / 1_000_000_000.0)
@@ -235,6 +269,9 @@ class MainActivity : AppCompatActivity() {
         }
         binding.subCardExpandable.visibility = if (isCardExpanded) View.VISIBLE else View.GONE
         binding.subCardChevron.animate().rotation(if (isCardExpanded) 180f else 0f).setDuration(220).start()
+        if (isCardExpanded && binding.announceText.text.isNotBlank()) {
+            binding.announceText.post { updateAnnounceToggleVisibility() }
+        }
     }
 
     private fun onConnectClicked() {
