@@ -57,6 +57,7 @@ class SubscriptionRepository {
         val connection = URL(urlWithDevice).openConnection() as HttpURLConnection
         connection.connectTimeout = 12_000
         connection.readTimeout = 12_000
+        connection.setRequestProperty("hwid", deviceId)
         connection.setRequestProperty("X-Device-Id", deviceId)
         connection.setRequestProperty("User-Agent", "NetBridge/1.0 (device:$deviceId)")
 
@@ -84,6 +85,7 @@ class SubscriptionRepository {
         connection.sslSocketFactory = SniPinnedSocketFactory(realHost)
         connection.hostnameVerifier = PinnedHostnameVerifier(realHost)
         connection.setRequestProperty("Host", realHost)
+        connection.setRequestProperty("hwid", deviceId)
         connection.setRequestProperty("X-Device-Id", deviceId)
         connection.setRequestProperty("User-Agent", "NetBridge/1.0 (device:$deviceId)")
 
@@ -97,9 +99,15 @@ class SubscriptionRepository {
         }
     }
 
+    /**
+     * Query param name matters: the live panel this was tested against silently
+     * substitutes a placeholder server unless it recognizes the hwid — `hwid` is
+     * what Happ/v2RayTun/V2Box/InCY all send. `device_id` is kept alongside for
+     * panels that use that name instead; harmless extra param otherwise.
+     */
     private fun appendDeviceId(url: String, deviceId: String): String {
         val separator = if (url.contains("?")) "&" else "?"
-        return "$url${separator}device_id=$deviceId"
+        return "$url${separator}hwid=$deviceId&device_id=$deviceId"
     }
 
     private companion object {
