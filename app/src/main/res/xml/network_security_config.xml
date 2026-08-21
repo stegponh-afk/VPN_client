@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!--
+      System trust store plus one bundled intermediate ("Root YE", chained under the
+      long-standing real ISRG Root X2). Old/unpatched Android devices (seen on a stock
+      Android 10 test device) don't have this newer Let's Encrypt intermediate in their
+      system trust store yet, which fails subscription fetches against any panel using
+      it with `CertPathValidatorException: Trust anchor for certification path not
+      found` even though the certificate itself is legitimate. This is the standard,
+      security-neutral fix (same pattern used historically for the pre-7.1.1 ISRG Root
+      X1 cross-sign issue) — it supplements the system store, it does not replace it.
+    -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
+            <certificates src="@raw/letsencrypt_root_ye" />
         </trust-anchors>
     </base-config>
 </network-security-config>
