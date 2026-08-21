@@ -26,6 +26,7 @@ import com.netbridge.app.subscription.SubscriptionInfo
 import com.netbridge.app.subscription.SubscriptionParser
 import com.netbridge.app.subscription.SubscriptionRepository
 import com.netbridge.app.ui.ButtonStateAnimator
+import com.netbridge.app.ui.ServerDividerDecoration
 import com.netbridge.app.ui.ServersAdapter
 import com.netbridge.app.vpn.TunnelController
 import com.netbridge.app.vpn.TunnelState
@@ -52,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var subscriptionInfo: SubscriptionInfo? = null
     private var isCardExpanded = true
     private var isAnnounceExpanded = false
+    private var announceOverflows = false
     private var pendingConnectConfig: VlessConfig? = null
     private var sessionTimerJob: Job? = null
     private var sessionStartMillis: Long = 0L
@@ -84,6 +86,7 @@ class MainActivity : AppCompatActivity() {
         binding.deviceIdText.text = getString(R.string.device_id_label, deviceId.take(12))
         binding.serverList.layoutManager = LinearLayoutManager(this)
         binding.serverList.adapter = adapter
+        binding.serverList.addItemDecoration(ServerDividerDecoration(this))
 
         binding.subscriptionButton.setOnClickListener { showSubscriptionDialog() }
         binding.refreshServersButton.setOnClickListener { refreshServers() }
@@ -209,8 +212,9 @@ class MainActivity : AppCompatActivity() {
             binding.announceText.visibility = View.VISIBLE
             binding.announceText.text = announce
             isAnnounceExpanded = false
+            announceOverflows = false
             applyAnnounceExpanded(animate = false)
-            binding.announceText.post { updateAnnounceToggleVisibility() }
+            binding.announceText.post { detectAnnounceOverflow() }
         } else {
             binding.announceText.visibility = View.GONE
             binding.announceToggle.visibility = View.GONE
@@ -219,19 +223,16 @@ class MainActivity : AppCompatActivity() {
         binding.supportLinkText.visibility = if (info?.supportUrl.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
-    /** Only show the "···" toggle when the text is actually being cut off at 2 lines. */
-    private fun updateAnnounceToggleVisibility() {
+    /** Runs once, right after the text is set and collapsed to 2 lines, to decide whether a toggle is needed at all. */
+    private fun detectAnnounceOverflow() {
         val layout = binding.announceText.layout ?: return
-        val isTruncated = !isAnnounceExpanded &&
-            layout.lineCount > 0 &&
-            layout.getEllipsisCount(layout.lineCount - 1) > 0
-        binding.announceToggle.visibility = if (isTruncated) View.VISIBLE else View.GONE
+        announceOverflows = layout.lineCount > 0 && layout.getEllipsisCount(layout.lineCount - 1) > 0
+        updateAnnounceToggleView()
     }
 
     private fun toggleAnnounceExpanded() {
-        isAnnounceExpanded = true
+        isAnnounceExpanded = !isAnnounceExpanded
         applyAnnounceExpanded(animate = true)
-        binding.announceToggle.visibility = View.GONE
     }
 
     private fun applyAnnounceExpanded(animate: Boolean) {
@@ -245,6 +246,14 @@ class MainActivity : AppCompatActivity() {
             binding.announceText.maxLines = 2
             binding.announceText.ellipsize = android.text.TextUtils.TruncateAt.END
         }
+        updateAnnounceToggleView()
+    }
+
+    private fun updateAnnounceToggleView() {
+        binding.announceToggle.visibility = if (announceOverflows) View.VISIBLE else View.GONE
+        binding.announceToggle.text = getString(
+            if (isAnnounceExpanded) R.string.announce_collapse else R.string.announce_expand
+        )
     }
 
     private fun formatGb(bytes: Long): String = String.format(Locale("ru"), "%.1f", bytes / 1_000_000_000.0)
@@ -270,7 +279,11 @@ class MainActivity : AppCompatActivity() {
         binding.subCardExpandable.visibility = if (isCardExpanded) View.VISIBLE else View.GONE
         binding.subCardChevron.animate().rotation(if (isCardExpanded) 180f else 0f).setDuration(220).start()
         if (isCardExpanded && binding.announceText.text.isNotBlank()) {
-            binding.announceText.post { updateAnnounceToggleVisibility() }
+            if (isAnnounceExpanded) {
+                updateAnnounceToggleView()
+            } else {
+                binding.announceText.post { detectAnnounceOverflow() }
+            }
         }
     }
 

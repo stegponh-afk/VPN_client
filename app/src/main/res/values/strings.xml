@@ -30,4 +30,5 @@
     <string name="traffic_usage_format">%1$s GB / %2$s GB</string>
     <string name="expiry_format">Истекает: %1$s</string>
     <string name="announce_expand">···</string>
+    <string name="announce_collapse">▲</string>
 </resources>
