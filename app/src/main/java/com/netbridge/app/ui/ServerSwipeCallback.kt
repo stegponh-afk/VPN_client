@@ -53,6 +53,22 @@ class ServerSwipeCallback(
     override fun getSwipeEscapeVelocity(defaultValue: Float): Float = Float.MAX_VALUE
     override fun getSwipeVelocityThreshold(defaultValue: Float): Float = Float.MAX_VALUE
 
+    // Since the threshold above is unreachable, every release is a "swipe cancel" as
+    // far as the framework is concerned — it was still playing its own recover-to-rest
+    // animation on top of the one clearView starts, and the two fighting over the same
+    // translationX each frame is what actually caused the visible double-snap. Making
+    // the framework's own animation instant (0ms) leaves ours as the only visible one.
+    override fun getAnimationDuration(
+        recyclerView: RecyclerView,
+        animationType: Int,
+        animateDx: Float,
+        animateDy: Float,
+    ): Long = if (animationType == ItemTouchHelper.ANIMATION_TYPE_SWIPE_CANCEL) {
+        0L
+    } else {
+        super.getAnimationDuration(recyclerView, animationType, animateDx, animateDy)
+    }
+
     override fun onMove(
         recyclerView: RecyclerView,
         viewHolder: RecyclerView.ViewHolder,
@@ -108,15 +124,25 @@ class ServerSwipeCallback(
         val dx = trackedDx
         trackedDx = 0f
         val position = viewHolder.bindingAdapterPosition
+        val shouldFire = position != RecyclerView.NO_POSITION && abs(dx) >= triggerPx
+        val isLeft = dx < 0
 
         super.clearView(recyclerView, viewHolder)
 
         val itemView = viewHolder.itemView
         itemView.translationX = dx
-        itemView.animate().translationX(0f).setDuration(180).start()
-
-        if (position == RecyclerView.NO_POSITION || abs(dx) < triggerPx) return
-        val server = getServer(position) ?: return
-        if (dx < 0) onSwipeLeft(server) else onSwipeRight(server)
+        // Fire the action only once the card has *fully* settled back at rest —
+        // triggering it mid-animation raced the adapter's notifyItemChanged (from
+        // the ping refresh) against this animation and made the card visibly
+        // stutter/snap twice.
+        itemView.animate()
+            .translationX(0f)
+            .setDuration(180)
+            .withEndAction {
+                if (!shouldFire) return@withEndAction
+                val server = getServer(position) ?: return@withEndAction
+                if (isLeft) onSwipeLeft(server) else onSwipeRight(server)
+            }
+            .start()
     }
 }
