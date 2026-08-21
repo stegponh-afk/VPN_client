@@ -34,6 +34,10 @@ class SubscriptionRepository {
                 } finally {
                     connection.disconnect()
                 }
+            }.onFailure { error ->
+                if (error is javax.net.ssl.SSLException || error.cause is javax.net.ssl.SSLException) {
+                    TlsDiagnostics.logChainForFailedRequest(subscriptionUrl)
+                }
             }
         }
 
