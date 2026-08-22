@@ -22,7 +22,7 @@ import com.netbridge.app.model.VlessConfig
 class CoreVpnService : VpnService() {
 
     private var tunInterface: ParcelFileDescriptor? = null
-    private val engine: TunnelEngine = StubTunnelEngine() // swap for XrayTunnelEngine() once it's implemented
+    private val engine: TunnelEngine = XrayTunnelEngine()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
@@ -59,10 +59,16 @@ class CoreVpnService : VpnService() {
             .addDnsServer("8.8.8.8")
             .setMtu(1500)
 
+        // Xray-core runs as a Go library inside this same process, not a separate
+        // one, so there's no per-socket fd to VpnService.protect() — excluding our
+        // own package from the tunnel bypasses all of this process's own traffic
+        // (including Xray-core's outbound connection to the real server) in one go.
+        runCatching { builder.addDisallowedApplication(packageName) }
+
         val pfd = builder.establish() ?: throw TunnelEngineException("VpnService.Builder.establish() returned null")
         tunInterface = pfd
 
-        engine.start(config, pfd.fileDescriptor) { fd -> protect(fd) }
+        engine.start(config, pfd.fd)
 
         TunnelStatus.update(TunnelState.CONNECTED)
         updateNotification(connecting = false)

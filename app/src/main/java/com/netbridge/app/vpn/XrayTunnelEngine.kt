@@ -1,58 +1,78 @@
 package com.netbridge.app.vpn
 
+import android.util.Log
 import com.netbridge.app.model.VlessConfig
-import java.io.FileDescriptor
+import libv2ray.CoreCallbackHandler
+import libv2ray.CoreController
+import libv2ray.Libv2ray
 
 /**
- * Real [TunnelEngine] backed by Xray-core, once `libv2ray.aar` is built and added
- * to `app/libs/` (see README.md → "Building the tunnel engine"). This file is a
- * scaffold, not a working implementation — it deliberately does NOT reference
- * `libv2ray.*` classes so the project keeps compiling before that AAR exists.
+ * Real [TunnelEngine], backed by Xray-core via `libv2ray.aar`
+ * (github.com/2dust/AndroidLibXrayLite — see README.md → "Building the tunnel
+ * engine" for how it's built).
  *
- * Once you've added the AAR and Android Studio can resolve `libv2ray.Libv2ray`,
- * fill in the TODOs below. The shape mirrors how AndroidLibXrayLite/v2rayNG wire
- * an Xray point up to a VpnService — three moving pieces:
+ * Xray-core has a native `tun` inbound (gVisor-based userspace network stack)
+ * that reads/writes an already-open TUN fd directly — see
+ * [VlessTunnelConfigBuilder], which emits that inbound instead of a local
+ * SOCKS proxy. That means no separate tun2socks bridge is needed here.
  *
- *  1. Build a JSON Xray client config from [VlessConfig] (inbound: socks/http on
- *     localhost; outbound: vless with this server's address/port/id/flow/
- *     network/security/sni/reality-or-tls params). [VlessTunnelConfigBuilder]
- *     already does this transform for you.
- *
- *  2. Implement the callback interface Xray expects from the host app (commonly
- *     named something like `V2RayVPNServiceSupportsSet`) with methods equivalent
- *     to: `protect(fd: Int): Boolean` → forward to [protectSocket]; `setup(...)`
- *     → no-op, this app builds the tun interface itself in CoreVpnService;
- *     `shutdown()` → mark [isRunning] false; `onEmitStatus(...)` → optional
- *     logging.
- *
- *  3. Create the point (`Libv2ray.newXrayPoint(callback)` or similar in the
- *     version you vendor), feed it the JSON config, call its run/loop method.
- *     Xray then listens on a local SOCKS port; bridge the [tunFd] to that SOCKS
- *     port with a tun2socks implementation — AndroidLibXrayLite historically
- *     ships one, or use github.com/xjasonlyu/tun2socks / hev-socks5-tunnel.
- *
- * Until this is filled in, [CoreVpnService] uses [StubTunnelEngine] instead.
+ * Xray-core's own outbound connection to the real VLESS server must not be
+ * captured by our own TUN interface (the classic VPN routing-loop bug). The
+ * usual fix is `VpnService.protect(fd)` per socket, but since Xray-core runs
+ * as a Go library inside this same app process rather than a separate one,
+ * the simpler fix is used instead: [CoreVpnService] excludes this app's own
+ * package from the VPN via `Builder.addDisallowedApplication`, so all of this
+ * process's traffic — including Xray-core's — already bypasses the tunnel.
  */
 class XrayTunnelEngine : TunnelEngine {
+
+    private var controller: CoreController? = null
 
     override var isRunning: Boolean = false
         private set
 
-    override fun start(config: VlessConfig, tunFd: FileDescriptor, protectSocket: (Int) -> Boolean) {
-        // TODO: build JSON config
-        // val json = VlessTunnelConfigBuilder.build(config)
-        //
-        // TODO: construct the Xray point with a callback that forwards protect()
-        // calls to `protectSocket`, start it, then start tun2socks against tunFd
-        // pointed at Xray's local SOCKS inbound.
-        throw TunnelEngineException(
-            "XrayTunnelEngine is a scaffold — see the class kdoc for the three " +
-                "integration steps still to implement."
-        )
+    override fun start(config: VlessConfig, tunFd: Int) {
+        // Xray's geoip/geosite asset lookup (InitCoreEnv) is skipped — the JSON
+        // config below has no geo-based routing rules to need it for.
+        val json = VlessTunnelConfigBuilder.build(config)
+        val newController = Libv2ray.newCoreController(LoggingCallbackHandler())
+        controller = newController
+
+        try {
+            newController.startLoop(json, tunFd)
+        } catch (e: Exception) {
+            controller = null
+            throw TunnelEngineException("Xray-core failed to start: ${e.message}", e)
+        }
+        isRunning = true
     }
 
     override fun stop() {
-        // TODO: stop tun2socks, then point.StopLoop() / equivalent.
+        val current = controller ?: return
+        controller = null
         isRunning = false
+        runCatching { current.stopLoop() }
+            .onFailure { Log.w(TAG, "stopLoop failed", it) }
+    }
+
+    private class LoggingCallbackHandler : CoreCallbackHandler {
+        override fun startup(): Long {
+            Log.i(TAG, "Xray-core started")
+            return 0
+        }
+
+        override fun shutdown(): Long {
+            Log.i(TAG, "Xray-core stopped")
+            return 0
+        }
+
+        override fun onEmitStatus(code: Long, message: String?): Long {
+            Log.i(TAG, "Xray-core status [$code]: $message")
+            return 0
+        }
+    }
+
+    private companion object {
+        const val TAG = "XrayTunnelEngine"
     }
 }

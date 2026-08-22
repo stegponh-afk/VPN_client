@@ -6,16 +6,14 @@ import org.json.JSONObject
 
 /**
  * Builds the Xray-core JSON client config for a single [VlessConfig] server.
- * Consumed by [XrayTunnelEngine] once it's wired up to an actual Xray point —
- * this half of the integration has no native/AAR dependency, so it's fully
- * implemented (and unit-testable) already.
  *
- * Inbound is a local SOCKS proxy on 127.0.0.1:10808; a tun2socks layer is
- * expected to bridge the VpnService TUN fd to that port.
+ * Inbound is Xray's native `tun` protocol: it reads/writes an already-open TUN
+ * fd directly via a bundled gVisor userspace network stack (see
+ * proxy/tun/tun_android.go in xray-core) — [XrayTunnelEngine] passes the fd
+ * through the `xray.tun.fd` env var (CoreController.startLoop's second arg),
+ * so this config only needs to declare the inbound exists, no port/listen.
  */
 object VlessTunnelConfigBuilder {
-
-    const val LOCAL_SOCKS_PORT = 10808
 
     fun build(config: VlessConfig): String {
         val root = JSONObject()
@@ -26,11 +24,17 @@ object VlessTunnelConfigBuilder {
             "inbounds",
             JSONArray().put(
                 JSONObject().apply {
-                    put("tag", "socks-in")
-                    put("listen", "127.0.0.1")
-                    put("port", LOCAL_SOCKS_PORT)
-                    put("protocol", "socks")
-                    put("settings", JSONObject().put("udp", true))
+                    put("tag", "tun-in")
+                    put("protocol", "tun")
+                    put("settings", JSONObject().put("mtu", 1500))
+                    put(
+                        "sniffing",
+                        JSONObject().apply {
+                            put("enabled", true)
+                            put("destOverride", JSONArray().put("http").put("tls").put("quic"))
+                            put("routeOnly", true)
+                        }
+                    )
                 }
             )
         )
@@ -94,6 +98,17 @@ object VlessTunnelConfigBuilder {
                 "grpc" -> put(
                     "grpcSettings",
                     JSONObject().put("serviceName", config.serviceName)
+                )
+                "xhttp" -> put(
+                    "xhttpSettings",
+                    JSONObject().apply {
+                        put("path", config.path.ifBlank { "/" })
+                        if (config.host.isNotBlank()) put("host", config.host)
+                        put("mode", config.mode.ifBlank { "auto" })
+                        if (config.extraJson.isNotBlank()) {
+                            runCatching { put("extra", JSONObject(config.extraJson)) }
+                        }
+                    }
                 )
             }
         }

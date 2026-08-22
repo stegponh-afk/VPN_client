@@ -67,6 +67,8 @@ object SubscriptionParser {
             path = params["path"] ?: "",
             serviceName = params["serviceName"] ?: "",
             alpn = params["alpn"] ?: "",
+            mode = params["mode"] ?: "",
+            extraJson = params["extra"] ?: "",
             rawUri = link,
         )
     }

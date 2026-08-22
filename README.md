@@ -1,91 +1,90 @@
 # NetBridge — простой Android VPN-клиент (VLESS, подписка)
 
-Прототип минималистичного клиента: один экран, список серверов из ссылки-подписки,
-кнопка подключения, привязка устройства (device id) к подписке для ограничения
-числа устройств.
+Минималистичный клиент: один экран, список серверов из ссылки-подписки,
+кнопка подключения, привязка устройства (device id / HWID) к подписке для
+ограничения числа устройств.
 
 ## Статус
 
-Это **первый экземпляр** (скелет проекта), не готовый production-релиз:
-
 | Модуль | Статус |
 |---|---|
-| UI (главный экран, список серверов, диалог подписки) | ✅ реализовано |
-| Парсинг `vless://` подписки (base64 + обычный список) | ✅ реализовано |
-| Device ID (HWID-аналог) и его отправка при запросе подписки | ✅ реализовано |
-| `VpnService`, foreground-уведомление, жизненный цикл | ✅ реализовано |
-| Сборка JSON-конфига Xray из `VlessConfig` | ✅ реализовано (`VlessTunnelConfigBuilder`) |
-| **Сам туннель (передача пакетов, протокол VLESS)** | ⛔ не реализовано — см. ниже |
+| UI (главный экран, карточка подписки, список серверов, свайп-жесты) | ✅ |
+| Парсинг `vless://` подписки (base64 + обычный список) | ✅ |
+| Метаданные подписки (название/трафик/срок/объявление) из заголовков ответа | ✅ |
+| Device ID (HWID) в заголовке `X-HWID` при запросе подписки | ✅ |
+| `VpnService`, foreground-уведомление, жизненный цикл | ✅ |
+| **Сам туннель (Xray-core, реальная передача трафика)** | ✅ |
 
-Кнопка "Подключить" сейчас честно покажет ошибку
-`error_engine_missing`, а не притворится, что трафик пошёл через VPN.
+Проверено вживую: при подключении внешний IP устройства меняется на IP
+сервера подписки; при отключении возвращается обратно.
 
-## Почему движок не готов "из коробки"
+## Как работает туннель
 
-Протокол VLESS реализован только в Xray-core (Go). Официального
-Maven/JitPack-пакета для Android нет — даже эталонный клиент
-[v2rayNG](https://github.com/2dust/v2rayNG) сам собирает `libv2ray.aar` из
-исходников [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite)
-через Go + `gomobile bind` на этапе CI. В этой сессии не было тулчейна
-Go/gomobile и Android NDK, поэтому AAR негде было собрать и проверить.
+Протокол VLESS/Reality/XHTTP реализован в Xray-core (Go) — готового
+Maven/JitPack-пакета для Android нет, поэтому `app/libs/libv2ray.aar`
+собирается напрямую из [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite)
+через `gomobile bind` (скрипт: [`scripts/build_xray_aar.sh`](scripts/build_xray_aar.sh)).
+Собранный AAR закоммичен в репозиторий — пересобирать нужно только при
+обновлении Xray-core.
 
-## Building the tunnel engine (что сделать дальше)
+У Xray-core есть встроенный inbound-тип `tun`, который читает/пишет уже
+открытый TUN-дескриптор напрямую через userspace-стек на gVisor
+(`proxy/tun/tun_android.go` в xray-core) — отдельный tun2socks не нужен:
 
-1. Установите Go 1.21+ и `gomobile`:
-   ```bash
-   go install golang.org/x/mobile/cmd/gomobile@latest
-   gomobile init
-   ```
-2. Склонируйте `AndroidLibXrayLite` и соберите AAR:
-   ```bash
-   git clone https://github.com/2dust/AndroidLibXrayLite
-   cd AndroidLibXrayLite
-   gomobile bind -androidapi 24 -target=android -o libv2ray.aar ./
-   ```
-3. Положите `libv2ray.aar` в `app/libs/` этого проекта (подключается
-   автоматически через `fileTree` в `app/build.gradle.kts`).
-4. Откройте проект в Android Studio — теперь IDE видит реальные классы
-   `libv2ray.*`, и можно с автодополнением дописать
-   [`app/src/main/java/com/netbridge/app/vpn/XrayTunnelEngine.kt`](app/src/main/java/com/netbridge/app/vpn/XrayTunnelEngine.kt)
-   по шагам, описанным в kdoc этого файла (JSON-конфиг уже готов в
-   `VlessTunnelConfigBuilder`, нужно только создать Xray point, прокинуть
-   `protect()` и связать TUN-дескриптор с локальным SOCKS через tun2socks).
-5. В `CoreVpnService.kt` заменить `StubTunnelEngine()` на `XrayTunnelEngine()`.
-6. Тестировать **обязательно на реальном устройстве или эмуляторе** —
-   `VpnService` нельзя проверить без Android-рантайма.
+1. [`CoreVpnService`](app/src/main/java/com/netbridge/app/vpn/CoreVpnService.kt)
+   создаёт TUN-интерфейс через `VpnService.Builder` и **исключает из VPN
+   собственное приложение** (`addDisallowedApplication(packageName)`) —
+   поскольку Xray-core работает как Go-библиотека в том же процессе, а не
+   отдельным процессом, это заменяет привычный `protect(fd)` на сокет: весь
+   исходящий трафик самого приложения (включая соединение Xray → реальный
+   VLESS-сервер) идёт в обход туннеля целиком, без обёртки каждого сокета.
+2. [`VlessTunnelConfigBuilder`](app/src/main/java/com/netbridge/app/vpn/VlessTunnelConfigBuilder.kt)
+   собирает JSON-конфиг Xray: inbound `tun`, outbound `vless` (tcp / ws / grpc
+   / xhttp, tls / reality).
+3. [`XrayTunnelEngine`](app/src/main/java/com/netbridge/app/vpn/XrayTunnelEngine.kt)
+   вызывает `Libv2ray.newCoreController(...)` → `controller.startLoop(json, tunFd)`.
+
+`StubTunnelEngine` остаётся в коде как безопасный fallback: если
+`app/libs/libv2ray.aar` отсутствует при сборке, приложение честно покажет
+ошибку вместо того, чтобы притворяться подключённым.
+
+### Пересборка `libv2ray.aar`
+
+Нужно: Go 1.21+, Android SDK + NDK.
+
+```bash
+export ANDROID_HOME=/path/to/Android/Sdk
+./scripts/build_xray_aar.sh
+```
 
 ## HWID / ограничение числа устройств
 
 Настоящего аппаратного ID Android не отдаёт приложениям без спецразрешений.
-`DeviceIdentity.kt` использует `Settings.Secure.ANDROID_ID` (стабилен на
-устройство+приложение+пользователя, переживает переустановку, сбрасывается
-только при заводском сбросе), с fallback на случайный UUID для редких
-битых устройств.
+`DeviceIdentity.kt` использует `Settings.Secure.ANDROID_ID` в 16-символьном
+hex-формате (как у Happ/v2RayTun — подтверждено перехватом трафика реального
+клиента через PCAPdroid), с fallback на случайный hex для редких битых
+устройств.
 
-Этот ID отправляется при каждом запросе подписки:
-- заголовком `X-Device-Id`
-- и query-параметром `?device_id=...`
+Этот ID отправляется при каждом запросе подписки заголовком **`X-HWID`**
+(подтверждённое требование живой Remnawave-панели — простой query-параметр
+`hwid`/`device_id` не срабатывал, панель отдавала подписку с
+единственным сервером-плейсхолдером без правильного заголовка).
 
 **Ограничение количества устройств — задача бэкенда** (панели, откуда
-раздаётся подписка: 3x-ui, Marzban, самописная). Приложение только передаёт
-идентификатор; серверная сторона должна:
-1. Логировать `device_id` при каждом запросе подписки по ключу.
-2. Считать количество уникальных `device_id` за последние N дней на ключ.
-3. Отдавать пустой список / 403, если лимit устройств превышен.
-
-Ничего из этого не реализовано на сервере в рамках данного репозитория —
-это конфигурация конкретной панели, не Android-кода.
+раздаётся подписка). Приложение только передаёт идентификатор; серверная
+сторона должна считать уникальные `X-HWID` на ключ и решать, отдавать ли
+реальный список серверов.
 
 ## О "невидимости" VPN для других приложений
 
 Android **обязан** показывать постоянное уведомление и иконку-ключ в
 статус-баре, пока активен `VpnService` — это встроенная в ОС гарантия
 прозрачности для владельца устройства, её нельзя убрать без root/эксплойтов,
-и в этом прототипе такого кода нет и не будет.
+и в этом приложении такого кода нет и не будет.
 
-То, что реально можно и сделано:
-- приложение не называется "VPN" и не использует характерную иконку —
-  как и у любого обычного коммерческого VPN-клиента в Google Play.
+То, что реально можно и сделано: приложение не называется "VPN" и не
+использует характерную иконку — как и у любого обычного коммерческого
+VPN-клиента в Google Play.
 
 Что специально не делается: обход проверок `ConnectivityManager` /
 `NetworkCapabilities.TRANSPORT_VPN`, которые сторонние приложения (например,
@@ -98,7 +97,7 @@ Android **обязан** показывать постоянное уведом�
 ./gradlew assembleDebug
 ```
 
-Требования: JDK 17, Android SDK (compileSdk 34). Открыть в Android Studio —
+Требования: JDK 17, Android SDK (compileSdk 36). Открыть в Android Studio —
 самый простой способ получить корректно настроенное окружение и запустить
 на эмуляторе/устройстве.
 
@@ -108,15 +107,17 @@ Android **обязан** показывать постоянное уведом�
 app/src/main/java/com/netbridge/app/
   MainActivity.kt              — единственный экран
   model/VlessConfig.kt         — распарсенный vless:// сервер
-  subscription/                — загрузка и парсинг подписки
-  device/DeviceIdentity.kt     — HWID-аналог
-  store/AppPreferences.kt      — единственное персистентное состояние
+  subscription/                — загрузка, парсинг подписки, метаданные, DoH-фолбэк
+  device/DeviceIdentity.kt     — HWID
+  store/AppPreferences.kt      — персистентное состояние
+  ui/                          — анимации кнопки, свайп-жесты серверов, пинг
   vpn/
     TunnelEngine.kt            — интерфейс движка
-    StubTunnelEngine.kt        — используется, пока нет Xray AAR
-    XrayTunnelEngine.kt        — заготовка для реальной интеграции
-    VlessTunnelConfigBuilder.kt— VlessConfig -> Xray JSON
+    XrayTunnelEngine.kt        — реальный движок (libv2ray.aar / Xray-core)
+    StubTunnelEngine.kt        — fallback, если AAR не собран
+    VlessTunnelConfigBuilder.kt— VlessConfig -> Xray JSON (tun inbound)
     CoreVpnService.kt          — android.net.VpnService
     TunnelController.kt        — VPN-consent + старт/стоп сервиса
     TunnelStatus.kt            — состояние для UI
+scripts/build_xray_aar.sh      — пересборка libv2ray.aar из AndroidLibXrayLite
 ```

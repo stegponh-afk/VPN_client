@@ -23,6 +23,8 @@ data class VlessConfig(
     val path: String,
     val serviceName: String,
     val alpn: String,
+    val mode: String,
+    val extraJson: String,
     val rawUri: String,
 ) {
     /** Stable identity for storage/selection — same server, different remark, is still the same server. */

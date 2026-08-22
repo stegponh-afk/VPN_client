@@ -1,7 +1,6 @@
 package com.netbridge.app.vpn
 
 import com.netbridge.app.model.VlessConfig
-import java.io.FileDescriptor
 
 /**
  * Abstraction over "whatever actually speaks the VLESS protocol and pushes packets
@@ -9,24 +8,19 @@ import java.io.FileDescriptor
  * (UI, service lifecycle, notification, HWID/subscription logic) does not depend
  * on which engine implementation is wired in.
  *
- * The only real-world implementation of VLESS today is Xray-core (Go). There is no
- * prebuilt Maven/JitPack artifact for it — see README.md, section
- * "Building the tunnel engine", for how to produce `libv2ray.aar` and wire a
- * concrete [TunnelEngine] against it. Until that's done, [StubTunnelEngine] is
- * used and reports [TunnelEngineException] instead of silently pretending to be
- * connected.
+ * Real implementation: [XrayTunnelEngine], backed by `libv2ray.aar` (built from
+ * github.com/2dust/AndroidLibXrayLite — see README.md → "Building the tunnel
+ * engine"). [StubTunnelEngine] is used instead when that AAR isn't present, and
+ * reports [TunnelEngineException] rather than silently pretending to be connected.
  */
 interface TunnelEngine {
 
     /**
-     * Start routing traffic for [config] through [tunFd].
-     * [protectSocket] MUST be called (this is `VpnService.protect(fd)`) on the
-     * engine's own outbound socket before it connects out, otherwise the engine's
-     * own connection to the VLESS server gets captured by the TUN interface and
-     * the device loses network entirely (classic VPN-app routing loop).
+     * Start routing traffic for [config] through the TUN interface identified by
+     * [tunFd] (the raw fd int from `ParcelFileDescriptor.getFd()`).
      */
     @Throws(TunnelEngineException::class)
-    fun start(config: VlessConfig, tunFd: FileDescriptor, protectSocket: (Int) -> Boolean)
+    fun start(config: VlessConfig, tunFd: Int)
 
     fun stop()
 

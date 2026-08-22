@@ -24,6 +24,8 @@ object ConfigExtras {
     private const val E_PATH = "path"
     private const val E_SERVICE_NAME = "serviceName"
     private const val E_ALPN = "alpn"
+    private const val E_MODE = "mode"
+    private const val E_EXTRA_JSON = "extraJson"
     private const val E_RAW = "rawUri"
 
     fun write(intent: Intent, config: VlessConfig): Intent = intent.apply {
@@ -45,6 +47,8 @@ object ConfigExtras {
         putExtra(E_PATH, config.path)
         putExtra(E_SERVICE_NAME, config.serviceName)
         putExtra(E_ALPN, config.alpn)
+        putExtra(E_MODE, config.mode)
+        putExtra(E_EXTRA_JSON, config.extraJson)
         putExtra(E_RAW, config.rawUri)
     }
 
@@ -70,6 +74,8 @@ object ConfigExtras {
             path = intent.getStringExtra(E_PATH) ?: "",
             serviceName = intent.getStringExtra(E_SERVICE_NAME) ?: "",
             alpn = intent.getStringExtra(E_ALPN) ?: "",
+            mode = intent.getStringExtra(E_MODE) ?: "",
+            extraJson = intent.getStringExtra(E_EXTRA_JSON) ?: "",
             rawUri = intent.getStringExtra(E_RAW) ?: "",
         )
     }
